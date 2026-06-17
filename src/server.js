@@ -1,3 +1,5 @@
+const connectDB = require('./db/connection');
+connectDB();
 require('dotenv').config();
 const express = require('express');
 const { validateWebhookSignature } = require('./utils/signature');

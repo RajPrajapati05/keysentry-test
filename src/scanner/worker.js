@@ -1,10 +1,10 @@
+const Scan = require('../db/models/Scan');
 require('dotenv').config();
 const axios = require('axios');
 const { scanQueue } = require('../queue');
 const { scanContent } = require('./detector');
 const { sendAlerts } = require('../alerts/alerter');
 
-// File types we skip (images, binaries etc)
 const SKIP_EXTENSIONS = [
   '.png', '.jpg', '.jpeg', '.gif', '.svg',
   '.ico', '.pdf', '.zip', '.tar', '.gz',
@@ -40,7 +40,6 @@ async function fetchFileContent(repo, sha, filePath) {
   }
 }
 
-// This runs for every scan job in the queue
 scanQueue.process('scan-commits', 3, async (job) => {
   const { repo, commits, pusher } = job.data;
   const allFindings = [];
@@ -49,6 +48,7 @@ scanQueue.process('scan-commits', 3, async (job) => {
 
   for (const commit of commits) {
     const files = [...new Set([...commit.added, ...commit.modified])];
+    const commitFindings = []; // ← ADD THIS
 
     for (const filePath of files) {
       if (shouldSkip(filePath)) continue;
@@ -67,9 +67,35 @@ scanQueue.process('scan-commits', 3, async (job) => {
           f.commitUrl = commit.url;
         });
         allFindings.push(...findings);
+        commitFindings.push(...findings); // ← ADD THIS
         console.log(`[Scanner] Found ${findings.length} secret(s) in ${filePath}`);
       }
     }
+
+    // ── ADD THIS BLOCK: save one Scan doc per commit ──────────────────
+    try {
+      const scan = new Scan({
+        repoFullName:  repo.fullName,
+        commitSha:     commit.sha,
+        commitMessage: commit.message,
+        pushedBy:      pusher,
+        findings:      commitFindings.map(f => ({
+          type:     f.type,
+          value:    f.value,
+          file:     f.file,
+          line:     f.line,
+          severity: f.severity || 'high'
+        })),
+        findingsCount: commitFindings.length,
+        status:        commitFindings.length > 0 ? 'flagged' : 'clean',
+        alertSent:     false
+      });
+      await scan.save();
+      console.log(`💾 Scan saved — ${scan.status} (${commitFindings.length} finding(s))`);
+    } catch (err) {
+      console.error('❌ Failed to save scan to MongoDB:', err.message);
+    }
+    // ─────────────────────────────────────────────────────────────────
   }
 
   if (allFindings.length > 0) {
