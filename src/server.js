@@ -1,6 +1,5 @@
-const connectDB = require('./db/connection');
-connectDB();
 require('dotenv').config();
+const connectDB = require('./db/connection');
 const express = require('express');
 const { validateWebhookSignature } = require('./utils/signature');
 const { scanQueue } = require('./queue');
@@ -8,14 +7,19 @@ const { scanQueue } = require('./queue');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// This lets us read the raw request body for signature checking
+// Connect to MongoDB
+connectDB();
+
+// Increase payload limit for large GitHub webhook payloads
 app.use(express.json({
+  limit: '10mb',
   verify: (req, res, buf) => {
     req.rawBody = buf;
   }
 }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
-// Health check — visit this in browser to confirm server is running
+// Health check
 app.get('/', (req, res) => {
   res.json({
     status: 'running',
@@ -24,12 +28,11 @@ app.get('/', (req, res) => {
   });
 });
 
-// GitHub sends a request here every time someone pushes code
+// GitHub webhook endpoint
 app.post('/webhook/github', async (req, res) => {
   const signature = req.headers['x-hub-signature-256'];
   const event = req.headers['x-github-event'];
 
-  // Step 1 — check signature is valid
   if (!signature) {
     return res.status(401).json({ error: 'Missing signature' });
   }
@@ -45,7 +48,6 @@ app.post('/webhook/github', async (req, res) => {
     return res.status(401).json({ error: 'Invalid signature' });
   }
 
-  // Step 2 — only process push events
   if (event !== 'push') {
     return res.status(200).json({ message: `Event '${event}' ignored` });
   }
@@ -58,7 +60,6 @@ app.post('/webhook/github', async (req, res) => {
 
   console.log(`[GitHub] Push from ${pusher.name} on ${repository.full_name}`);
 
-  // Step 3 — add scan job to queue
   const job = await scanQueue.add('scan-commits', {
     provider: 'github',
     repo: {
