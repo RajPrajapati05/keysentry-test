@@ -10,6 +10,9 @@ const PORT = process.env.PORT || 3000;
 // Connect to MongoDB
 connectDB();
 
+// Start the scanner worker
+require('./scanner/worker');
+
 // Increase payload limit for large GitHub webhook payloads
 app.use(express.json({
   limit: '10mb',
@@ -18,6 +21,10 @@ app.use(express.json({
   }
 }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+// API routes
+const scansRouter = require('./routes/scans');
+app.use('/api/scans', scansRouter);
 
 // Health check
 app.get('/', (req, res) => {
