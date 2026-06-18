@@ -1,6 +1,9 @@
 require('dotenv').config();
 const connectDB = require('./db/connection');
 const express = require('express');
+const session = require('express-session');
+const cookieParser = require('cookie-parser');
+const passport = require('./auth/passport');
 const { validateWebhookSignature } = require('./utils/signature');
 const { scanQueue } = require('./queue');
 
@@ -13,6 +16,17 @@ connectDB();
 // Start the scanner worker
 require('./scanner/worker');
 
+// Middleware
+app.use(cookieParser());
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'fallback_secret',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 7 * 24 * 60 * 60 * 1000 }
+}));
+app.use(passport.initialize());
+app.use(passport.session());
+
 // Increase payload limit for large GitHub webhook payloads
 app.use(express.json({
   limit: '10mb',
@@ -24,7 +38,9 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // API routes
 const scansRouter = require('./routes/scans');
+const authRouter = require('./routes/auth');
 app.use('/api/scans', scansRouter);
+app.use('/auth', authRouter);
 
 // Health check
 app.get('/', (req, res) => {
