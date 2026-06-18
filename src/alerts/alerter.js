@@ -1,5 +1,6 @@
 require('dotenv').config();
 const nodemailer = require('nodemailer');
+const { sendSlackAlert } = require('./slack');
 
 async function sendEmailAlert(findings) {
   const { EMAIL_HOST, EMAIL_USER, EMAIL_PASS, ALERT_EMAIL_TO } = process.env;
@@ -22,10 +23,10 @@ async function sendEmailAlert(findings) {
 
   const rows = findings.map(f => `
     <tr>
-      <td style="padding:8px;border-bottom:1px solid #eee">${f.description}</td>
-      <td style="padding:8px;border-bottom:1px solid #eee">${f.filePath}:${f.lineNumber}</td>
-      <td style="padding:8px;border-bottom:1px solid #eee">${f.matchedValue}</td>
-      <td style="padding:8px;border-bottom:1px solid #eee;color:red;font-weight:bold">${f.severity.toUpperCase()}</td>
+      <td style="padding:8px;border-bottom:1px solid #eee">${f.type || f.description}</td>
+      <td style="padding:8px;border-bottom:1px solid #eee">${f.file || f.filePath}:${f.line || f.lineNumber}</td>
+      <td style="padding:8px;border-bottom:1px solid #eee">${f.value || f.matchedValue}</td>
+      <td style="padding:8px;border-bottom:1px solid #eee;color:red;font-weight:bold">${f.severity?.toUpperCase()}</td>
     </tr>
   `).join('');
 
@@ -57,7 +58,7 @@ async function sendEmailAlert(findings) {
   await transporter.sendMail({
     from: `"KeySentry" <${EMAIL_USER}>`,
     to: ALERT_EMAIL_TO,
-    subject: `[${top.severity.toUpperCase()}] Secret leaked in ${top.repo}`,
+    subject: `[${top.severity?.toUpperCase()}] Secret leaked in ${top.repo}`,
     html,
   });
 
@@ -65,8 +66,18 @@ async function sendEmailAlert(findings) {
 }
 
 async function sendAlerts(findings) {
+  if (!findings || findings.length === 0) return;
+
+  const top = findings[0];
+
   await Promise.allSettled([
     sendEmailAlert(findings),
+    sendSlackAlert(
+      findings,
+      top.repo,
+      top.commitSha,
+      top.pusher
+    ),
   ]);
 }
 
