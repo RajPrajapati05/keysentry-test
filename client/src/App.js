@@ -4,6 +4,7 @@ import Navbar from './components/Navbar';
 import Dashboard from './pages/Dashboard';
 import ScanDetail from './pages/ScanDetail';
 import Login from './pages/Login';
+import Repos from './pages/Repos';
 import axios from 'axios';
 
 function App() {
@@ -23,12 +24,17 @@ function App() {
     </div>
   );
 
+  const ProtectedLayout = ({ children }) => user
+    ? <><Navbar user={user}/>{children}</>
+    : <Navigate to="/login" />;
+
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
-        <Route path="/" element={user ? <><Navbar user={user}/><Dashboard /></> : <Navigate to="/login" />} />
-        <Route path="/scans/:id" element={user ? <><Navbar user={user}/><ScanDetail /></> : <Navigate to="/login" />} />
+        <Route path="/" element={<ProtectedLayout><Dashboard /></ProtectedLayout>} />
+        <Route path="/repos" element={<ProtectedLayout><Repos /></ProtectedLayout>} />
+        <Route path="/scans/:id" element={<ProtectedLayout><ScanDetail /></ProtectedLayout>} />
       </Routes>
     </BrowserRouter>
   );

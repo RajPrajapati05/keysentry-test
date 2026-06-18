@@ -39,8 +39,10 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 // API routes
 const scansRouter = require('./routes/scans');
 const authRouter = require('./routes/auth');
+const reposRouter = require('./routes/repos');
 app.use('/api/scans', scansRouter);
 app.use('/auth', authRouter);
+app.use('/api/repos', reposRouter);
 
 // Health check
 app.get('/', (req, res) => {
