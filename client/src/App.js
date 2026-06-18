@@ -7,12 +7,14 @@ import Login from './pages/Login';
 import Repos from './pages/Repos';
 import axios from 'axios';
 
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
+
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    axios.get('/auth/me')
+    axios.get(`${BACKEND_URL}/auth/me`, { withCredentials: true })
       .then(res => setUser(res.data))
       .catch(() => setUser(null))
       .finally(() => setLoading(false));

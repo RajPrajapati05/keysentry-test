@@ -1,8 +1,10 @@
 import { ShieldCheck } from 'lucide-react';
 
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
+
 export default function Login() {
   const handleLogin = () => {
-    window.location.href = 'http://localhost:4000/auth/github';
+    window.location.href = `${BACKEND_URL}/auth/github`;
   };
 
   return (

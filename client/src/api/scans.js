@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-const API = axios.create({ baseURL: '/api' });
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
+const API = axios.create({ baseURL: BACKEND_URL });
 
-export const getScans = () => API.get('/scans');
-export const getScanById = (id) => API.get(`/scans/${id}`);
-export const getStats = () => API.get('/scans/stats');
+export const getScans = () => API.get('/api/scans');
+export const getScanById = (id) => API.get(`/api/scans/${id}`);

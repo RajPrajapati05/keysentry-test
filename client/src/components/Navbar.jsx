@@ -2,12 +2,14 @@ import { ShieldCheck, GitBranch, LayoutDashboard } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
+
 export default function Navbar({ user }) {
   const navigate = useNavigate();
   const location = useLocation();
 
   const handleLogout = async () => {
-    await axios.get('/auth/logout');
+    await axios.get(`${BACKEND_URL}/auth/logout`, { withCredentials: true });
     window.location.href = '/login';
   };
 
