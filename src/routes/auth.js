@@ -27,12 +27,13 @@ router.get('/github/callback',
     res.cookie('keysentry_token', token, {
       httpOnly: false,
       maxAge: 7 * 24 * 60 * 60 * 1000,
-      sameSite: 'lax'
+      sameSite: 'none',
+      secure: true
     });
 
     // Redirect to dashboard
     const clientURL = process.env.NODE_ENV === 'production'
-      ? 'https://your-frontend.onrender.com'
+      ? 'https://keysentry-frontend.onrender.com'
       : 'http://localhost:3000';
 
     res.redirect(clientURL);
