@@ -1,7 +1,10 @@
 import axios from 'axios';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
-const API = axios.create({ baseURL: BACKEND_URL });
+const API = axios.create({
+  baseURL: BACKEND_URL,
+  withCredentials: true
+});
 
 export const getConnectedRepos = () => API.get('/api/repos');
 export const getGithubRepos = () => API.get('/api/repos/github');
