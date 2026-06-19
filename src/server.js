@@ -23,13 +23,20 @@ app.use(cors({
   credentials: true
 }));
 
+// Trust proxy — required for secure cookies behind Render's proxy
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(cookieParser());
 app.use(session({
   secret: process.env.SESSION_SECRET || 'fallback_secret',
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 7 * 24 * 60 * 60 * 1000 }
+  cookie: {
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    secure: process.env.NODE_ENV === 'production'
+  }
 }));
 app.use(passport.initialize());
 app.use(passport.session());
