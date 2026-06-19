@@ -1,11 +1,15 @@
 const mongoose = require('mongoose');
 
 const findingSchema = new mongoose.Schema({
-  type:     String,
-  value:    String,
-  file:     String,
-  line:     Number,
-  severity: { type: String, enum: ['critical','high','medium','low'], default: 'high' }
+  type:        String,
+  value:       String,
+  file:        String,
+  line:        Number,
+  severity:    { type: String, enum: ['critical','high','medium','low'], default: 'high' },
+  suppressed:  { type: Boolean, default: false },
+  suppressedBy: String,
+  suppressedAt: Date,
+  suppressReason: String
 });
 
 const scanSchema = new mongoose.Schema({

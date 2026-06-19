@@ -1,4 +1,6 @@
 const Scan = require('../db/models/Scan');
+const Suppression = require('../db/models/Suppression');
+const crypto = require('crypto');
 require('dotenv').config();
 const axios = require('axios');
 const { scanQueue } = require('../queue');
@@ -40,6 +42,23 @@ async function fetchFileContent(repo, sha, filePath) {
   }
 }
 
+// ── ADD THIS: check if a finding matches a permanent suppression rule ──
+async function isSuppressed(repoFullName, filePath, ruleId, value) {
+  try {
+    const valueHash = crypto.createHash('sha256').update(value).digest('hex');
+    const rule = await Suppression.findOne({
+      repoFullName,
+      file: filePath,
+      ruleId,
+      valueHash
+    });
+    return !!rule;
+  } catch {
+    return false;
+  }
+}
+// ─────────────────────────────────────────────────────────────────────
+
 scanQueue.process('scan-commits', 3, async (job) => {
   const { repo, commits, pusher } = job.data;
   const allFindings = [];
@@ -48,7 +67,7 @@ scanQueue.process('scan-commits', 3, async (job) => {
 
   for (const commit of commits) {
     const files = [...new Set([...commit.added, ...commit.modified])];
-    const commitFindings = []; // ← ADD THIS
+    const commitFindings = [];
 
     for (const filePath of files) {
       if (shouldSkip(filePath)) continue;
@@ -59,20 +78,29 @@ scanQueue.process('scan-commits', 3, async (job) => {
       const findings = scanContent(content, filePath);
 
       if (findings.length > 0) {
-        findings.forEach(f => {
-          f.repo = repo.fullName;
-          f.pusher = pusher;
-          f.commitSha = commit.sha;
-          f.author = commit.author;
-          f.commitUrl = commit.url;
-        });
-        allFindings.push(...findings);
-        commitFindings.push(...findings); // ← ADD THIS
-        console.log(`[Scanner] Found ${findings.length} secret(s) in ${filePath}`);
+        // ── ADD THIS: filter out permanently suppressed findings ──
+        const activeFindings = [];
+        for (const f of findings) {
+          const suppressed = await isSuppressed(repo.fullName, filePath, f.type, f.value);
+          if (!suppressed) activeFindings.push(f);
+        }
+        // ────────────────────────────────────────────────────────
+
+        if (activeFindings.length > 0) {
+          activeFindings.forEach(f => {
+            f.repo = repo.fullName;
+            f.pusher = pusher;
+            f.commitSha = commit.sha;
+            f.author = commit.author;
+            f.commitUrl = commit.url;
+          });
+          allFindings.push(...activeFindings);
+          commitFindings.push(...activeFindings);
+          console.log(`[Scanner] Found ${activeFindings.length} secret(s) in ${filePath}`);
+        }
       }
     }
 
-    // ── ADD THIS BLOCK: save one Scan doc per commit ──────────────────
     try {
       const scan = new Scan({
         repoFullName:  repo.fullName,
@@ -95,7 +123,6 @@ scanQueue.process('scan-commits', 3, async (job) => {
     } catch (err) {
       console.error('❌ Failed to save scan to MongoDB:', err.message);
     }
-    // ─────────────────────────────────────────────────────────────────
   }
 
   if (allFindings.length > 0) {
