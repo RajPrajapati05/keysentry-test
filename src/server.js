@@ -1,6 +1,7 @@
 require('dotenv').config();
 const connectDB = require('./db/connection');
 const express = require('express');
+const cors = require('cors');
 const session = require('express-session');
 const cookieParser = require('cookie-parser');
 const passport = require('./auth/passport');
@@ -15,6 +16,12 @@ connectDB();
 
 // Start the scanner worker
 require('./scanner/worker');
+
+// CORS — must be before other middleware
+app.use(cors({
+  origin: ['https://keysentry-frontend.onrender.com', 'http://localhost:3000'],
+  credentials: true
+}));
 
 // Middleware
 app.use(cookieParser());
