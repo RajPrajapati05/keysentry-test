@@ -1,11 +1,12 @@
 const Scan = require('../db/models/Scan');
 const Suppression = require('../db/models/Suppression');
+const Repo = require('../db/models/Repo');
 const crypto = require('crypto');
 require('dotenv').config();
-const axios = require('axios');
 const { scanQueue } = require('../queue');
 const { scanContent } = require('./detector');
 const { sendAlerts } = require('../alerts/alerter');
+const { getProvider } = require('../providers');
 
 const SKIP_EXTENSIONS = [
   '.png', '.jpg', '.jpeg', '.gif', '.svg',
@@ -21,28 +22,13 @@ function shouldSkip(filePath) {
   return SKIP_EXTENSIONS.some(ext => lower.endsWith(ext));
 }
 
-async function fetchFileContent(repo, sha, filePath) {
-  try {
-    const [owner, repoName] = repo.fullName.split('/');
-    const url = `https://api.github.com/repos/${owner}/${repoName}/contents/${filePath}?ref=${sha}`;
-    const response = await axios.get(url, {
-      headers: {
-        Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
-        Accept: 'application/vnd.github.v3.raw',
-      },
-      timeout: 8000,
-    });
-    return typeof response.data === 'string'
-      ? response.data
-      : JSON.stringify(response.data);
-  } catch (err) {
-    if (err.response?.status === 404) return null;
-    console.warn(`[Worker] Could not fetch ${filePath}:`, err.message);
-    return null;
-  }
+// Resolve the right token for the given provider
+function getTokenForProvider(providerName) {
+  if (providerName === 'gitlab') return process.env.GITLAB_TOKEN;
+  if (providerName === 'bitbucket') return process.env.BITBUCKET_TOKEN;
+  return process.env.GITHUB_TOKEN; // default
 }
 
-// ── ADD THIS: check if a finding matches a permanent suppression rule ──
 async function isSuppressed(repoFullName, filePath, ruleId, value) {
   try {
     const valueHash = crypto.createHash('sha256').update(value).digest('hex');
@@ -57,13 +43,15 @@ async function isSuppressed(repoFullName, filePath, ruleId, value) {
     return false;
   }
 }
-// ─────────────────────────────────────────────────────────────────────
 
 scanQueue.process('scan-commits', 3, async (job) => {
-  const { repo, commits, pusher } = job.data;
+  const { repo, commits, pusher, provider: providerName = 'github' } = job.data;
   const allFindings = [];
 
-  console.log(`[Worker] Scanning ${repo.fullName} — ${commits.length} commit(s)`);
+  const provider = getProvider(providerName);
+  const token = getTokenForProvider(providerName);
+
+  console.log(`[Worker] Scanning ${repo.fullName} on ${providerName} — ${commits.length} commit(s)`);
 
   for (const commit of commits) {
     const files = [...new Set([...commit.added, ...commit.modified])];
@@ -72,19 +60,17 @@ scanQueue.process('scan-commits', 3, async (job) => {
     for (const filePath of files) {
       if (shouldSkip(filePath)) continue;
 
-      const content = await fetchFileContent(repo, commit.sha, filePath);
+      const content = await provider.fetchFileContent(repo.fullName, commit.sha, filePath, token);
       if (!content) continue;
 
       const findings = scanContent(content, filePath);
 
       if (findings.length > 0) {
-        // ── ADD THIS: filter out permanently suppressed findings ──
         const activeFindings = [];
         for (const f of findings) {
           const suppressed = await isSuppressed(repo.fullName, filePath, f.type, f.value);
           if (!suppressed) activeFindings.push(f);
         }
-        // ────────────────────────────────────────────────────────
 
         if (activeFindings.length > 0) {
           activeFindings.forEach(f => {
@@ -120,6 +106,15 @@ scanQueue.process('scan-commits', 3, async (job) => {
       });
       await scan.save();
       console.log(`💾 Scan saved — ${scan.status} (${commitFindings.length} finding(s))`);
+
+      // Update repo stats
+      await Repo.findOneAndUpdate(
+        { provider: providerName, repoFullName: repo.fullName },
+        {
+          $set: { lastScanAt: new Date() },
+          $inc: { totalScans: 1, totalFindings: commitFindings.length }
+        }
+      );
     } catch (err) {
       console.error('❌ Failed to save scan to MongoDB:', err.message);
     }

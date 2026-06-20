@@ -4,6 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const session = require('express-session');
 const cookieParser = require('cookie-parser');
+const crypto = require('crypto');
 const passport = require('./auth/passport');
 const { validateWebhookSignature } = require('./utils/signature');
 const { scanQueue } = require('./queue');
@@ -41,7 +42,7 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Increase payload limit for large GitHub webhook payloads
+// Increase payload limit for large webhook payloads
 app.use(express.json({
   limit: '10mb',
   verify: (req, res, buf) => {
@@ -54,9 +55,11 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 const scansRouter = require('./routes/scans');
 const authRouter = require('./routes/auth');
 const reposRouter = require('./routes/repos');
+const connectionsRouter = require('./routes/connections');
 app.use('/api/scans', scansRouter);
 app.use('/auth', authRouter);
 app.use('/api/repos', reposRouter);
+app.use('/connections', connectionsRouter);
 
 // Health check
 app.get('/', (req, res) => {
@@ -115,6 +118,101 @@ app.post('/webhook/github', async (req, res) => {
     })),
     branch: ref,
     pusher: pusher.name,
+  });
+
+  console.log(`[Queue] Job ${job.id} added for ${repository.full_name}`);
+  return res.status(202).json({ message: 'Scan started', jobId: job.id });
+});
+
+// GitLab webhook endpoint
+app.post('/webhook/gitlab', async (req, res) => {
+  const token = req.headers['x-gitlab-token'];
+  const event = req.headers['x-gitlab-event'];
+
+  if (!token || token !== process.env.GITLAB_WEBHOOK_SECRET) {
+    console.warn('[GitLab] Invalid token — rejected');
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+
+  if (event !== 'Push Hook') {
+    return res.status(200).json({ message: `Event '${event}' ignored` });
+  }
+
+  const { project, commits, user_username, ref } = req.body;
+
+  if (!commits || commits.length === 0) {
+    return res.status(200).json({ message: 'No commits to scan' });
+  }
+
+  console.log(`[GitLab] Push from ${user_username} on ${project.path_with_namespace}`);
+
+  const job = await scanQueue.add('scan-commits', {
+    provider: 'gitlab',
+    repo: {
+      fullName: project.path_with_namespace,
+      url: project.git_http_url,
+    },
+    commits: commits.map(c => ({
+      sha: c.id,
+      message: c.message,
+      author: c.author?.email || user_username,
+      added: c.added || [],
+      modified: c.modified || [],
+      url: c.url,
+    })),
+    branch: ref,
+    pusher: user_username,
+  });
+
+  console.log(`[Queue] Job ${job.id} added for ${project.path_with_namespace}`);
+  return res.status(202).json({ message: 'Scan started', jobId: job.id });
+});
+
+// Bitbucket webhook endpoint
+app.post('/webhook/bitbucket', async (req, res) => {
+  const event = req.headers['x-event-key'];
+
+  const signature = req.headers['x-hub-signature'];
+  if (process.env.BITBUCKET_WEBHOOK_SECRET && signature) {
+    const expected = 'sha256=' + crypto
+      .createHmac('sha256', process.env.BITBUCKET_WEBHOOK_SECRET)
+      .update(req.rawBody)
+      .digest('hex');
+    if (signature !== expected) {
+      console.warn('[Bitbucket] Invalid signature — rejected');
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+  }
+
+  if (event !== 'repo:push') {
+    return res.status(200).json({ message: `Event '${event}' ignored` });
+  }
+
+  const { repository, push, actor } = req.body;
+  const change = push?.changes?.[0];
+
+  if (!change || !change.commits || change.commits.length === 0) {
+    return res.status(200).json({ message: 'No commits to scan' });
+  }
+
+  console.log(`[Bitbucket] Push from ${actor.display_name} on ${repository.full_name}`);
+
+  const job = await scanQueue.add('scan-commits', {
+    provider: 'bitbucket',
+    repo: {
+      fullName: repository.full_name,
+      url: repository.links?.html?.href,
+    },
+    commits: change.commits.map(c => ({
+      sha: c.hash,
+      message: c.message,
+      author: c.author?.raw || actor.display_name,
+      added: [],
+      modified: [],
+      url: c.links?.html?.href,
+    })),
+    branch: change.new?.name,
+    pusher: actor.display_name,
   });
 
   console.log(`[Queue] Job ${job.id} added for ${repository.full_name}`);
