@@ -72,6 +72,7 @@ router.get('/gitlab', authMiddleware, async (req, res) => {
 
     res.json(result);
   } catch (err) {
+    console.error('[GitLab repos] Error:', err.response?.data || err.message);
     res.status(500).json({ error: err.message });
   }
 });

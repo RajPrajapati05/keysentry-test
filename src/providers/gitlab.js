@@ -6,7 +6,7 @@ async function fetchFileContent(repoFullName, sha, filePath, token) {
     const filePathEncoded = encodeURIComponent(filePath);
     const url = `https://gitlab.com/api/v4/projects/${projectId}/repository/files/${filePathEncoded}/raw?ref=${sha}`;
     const response = await axios.get(url, {
-      headers: { 'PRIVATE-TOKEN': token },
+      headers: { Authorization: `Bearer ${token}` },
       timeout: 8000,
     });
     return typeof response.data === 'string'
@@ -21,7 +21,7 @@ async function fetchFileContent(repoFullName, sha, filePath, token) {
 
 async function listUserRepos(token) {
   const response = await axios.get('https://gitlab.com/api/v4/projects', {
-    headers: { 'PRIVATE-TOKEN': token },
+    headers: { Authorization: `Bearer ${token}` },
     params: { membership: true, per_page: 100, order_by: 'last_activity_at' }
   });
   return response.data.map(r => ({
@@ -45,7 +45,7 @@ async function installWebhook(repoFullName, token, webhookURL, secret) {
       enable_ssl_verification: true
     },
     {
-      headers: { 'PRIVATE-TOKEN': token }
+      headers: { Authorization: `Bearer ${token}` }
     }
   );
   return response.data.id;
