@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const axios = require('axios');
 const Repo = require('../db/models/Repo');
+const User = require('../db/models/User');
 const jwt = require('jsonwebtoken');
+const { getProvider } = require('../providers');
 
-// Middleware to get user from JWT cookie
 function authMiddleware(req, res, next) {
   const token = req.cookies?.keysentry_token;
   if (!token) return res.status(401).json({ error: 'Not authenticated' });
@@ -16,7 +16,7 @@ function authMiddleware(req, res, next) {
   }
 }
 
-// GET /api/repos — get all connected repos
+// GET /api/repos — get all connected repos (across all providers)
 router.get('/', authMiddleware, async (req, res) => {
   try {
     const repos = await Repo.find().sort({ addedAt: -1 });
@@ -29,84 +29,118 @@ router.get('/', authMiddleware, async (req, res) => {
 // GET /api/repos/github — list user's GitHub repos
 router.get('/github', authMiddleware, async (req, res) => {
   try {
-    const User = require('../db/models/User');
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
+    if (!user.accessToken) return res.json([]);
 
-    const response = await axios.get('https://api.github.com/user/repos', {
-      headers: {
-        Authorization: `Bearer ${user.accessToken}`,
-        Accept: 'application/vnd.github.v3+json',
-      },
-      params: { per_page: 100, sort: 'updated', affiliation: 'owner' }
-    });
+    const provider = getProvider('github');
+    const repos = await provider.listUserRepos(user.accessToken);
 
-    const connectedRepos = await Repo.find();
+    const connectedRepos = await Repo.find({ provider: 'github' });
     const connectedNames = connectedRepos.map(r => r.repoFullName);
 
-    const repos = response.data.map(r => ({
-      id: r.id,
-      fullName: r.full_name,
-      description: r.description,
-      private: r.private,
-      language: r.language,
-      updatedAt: r.updated_at,
-      isConnected: connectedNames.includes(r.full_name)
+    const result = repos.map(r => ({
+      ...r,
+      provider: 'github',
+      isConnected: connectedNames.includes(r.fullName)
     }));
 
-    res.json(repos);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST /api/repos/connect — connect a repo and install webhook
+// GET /api/repos/gitlab — list user's GitLab repos
+router.get('/gitlab', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    const token = user?.connections?.gitlab?.accessToken;
+    if (!token) return res.json([]);
+
+    const provider = getProvider('gitlab');
+    const repos = await provider.listUserRepos(token);
+
+    const connectedRepos = await Repo.find({ provider: 'gitlab' });
+    const connectedNames = connectedRepos.map(r => r.repoFullName);
+
+    const result = repos.map(r => ({
+      ...r,
+      provider: 'gitlab',
+      isConnected: connectedNames.includes(r.fullName)
+    }));
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/repos/bitbucket — list user's Bitbucket repos
+router.get('/bitbucket', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    const token = user?.connections?.bitbucket?.accessToken;
+    if (!token) return res.json([]);
+
+    const provider = getProvider('bitbucket');
+    const repos = await provider.listUserRepos(token);
+
+    const connectedRepos = await Repo.find({ provider: 'bitbucket' });
+    const connectedNames = connectedRepos.map(r => r.repoFullName);
+
+    const result = repos.map(r => ({
+      ...r,
+      provider: 'bitbucket',
+      isConnected: connectedNames.includes(r.fullName)
+    }));
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/repos/connect — connect a repo on any provider and install webhook
 router.post('/connect', authMiddleware, async (req, res) => {
-  const { repoFullName } = req.body;
+  const { repoFullName, provider: providerName = 'github' } = req.body;
   if (!repoFullName) return res.status(400).json({ error: 'repoFullName required' });
 
   try {
-    const User = require('../db/models/User');
     const user = await User.findById(req.user.id);
-    const [owner, repo] = repoFullName.split('/');
 
-    // Install webhook on GitHub
-    const webhookURL = `${process.env.RENDER_URL || 'https://keysentry-test.onrender.com'}/webhook/github`;
-
-    let webhookId = null;
-    try {
-      const webhookRes = await axios.post(
-        `https://api.github.com/repos/${owner}/${repo}/hooks`,
-        {
-          name: 'web',
-          active: true,
-          events: ['push'],
-          config: {
-            url: webhookURL,
-            content_type: 'json',
-            secret: process.env.GITHUB_WEBHOOK_SECRET,
-            insecure_ssl: '0'
-          }
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${user.accessToken}`,
-            Accept: 'application/vnd.github.v3+json',
-          }
-        }
-      );
-      webhookId = webhookRes.data.id;
-    } catch (webhookErr) {
-      // Webhook might already exist — continue
-      console.warn('[Repos] Webhook install warning:', webhookErr.response?.data?.message);
+    let token, webhookSecret;
+    if (providerName === 'github') {
+      token = user.accessToken;
+      webhookSecret = process.env.GITHUB_WEBHOOK_SECRET;
+    } else if (providerName === 'gitlab') {
+      token = user.connections?.gitlab?.accessToken;
+      webhookSecret = process.env.GITLAB_WEBHOOK_SECRET;
+    } else if (providerName === 'bitbucket') {
+      token = user.connections?.bitbucket?.accessToken;
+      webhookSecret = process.env.BITBUCKET_WEBHOOK_SECRET;
+    } else {
+      return res.status(400).json({ error: 'Unknown provider' });
     }
 
-    // Save repo to MongoDB
-    const existing = await Repo.findOne({ repoFullName });
+    if (!token) return res.status(400).json({ error: `${providerName} account not connected` });
+
+    const baseUrl = process.env.RENDER_URL || 'https://keysentry-test.onrender.com';
+    const webhookURL = `${baseUrl}/webhook/${providerName}`;
+
+    const provider = getProvider(providerName);
+    let webhookId = null;
+    try {
+      webhookId = await provider.installWebhook(repoFullName, token, webhookURL, webhookSecret);
+    } catch (webhookErr) {
+      console.warn(`[Repos] Webhook install warning (${providerName}):`, webhookErr.response?.data || webhookErr.message);
+    }
+
+    const existing = await Repo.findOne({ provider: providerName, repoFullName });
     if (existing) return res.status(400).json({ error: 'Repo already connected' });
 
-    const newRepo = await Repo.create({ repoFullName, webhookId });
-    console.log(`[Repos] Connected: ${repoFullName}`);
+    const newRepo = await Repo.create({ provider: providerName, repoFullName, webhookId });
+    console.log(`[Repos] Connected: ${repoFullName} (${providerName})`);
     res.json({ success: true, repo: newRepo });
 
   } catch (err) {
@@ -116,9 +150,9 @@ router.post('/connect', authMiddleware, async (req, res) => {
 
 // DELETE /api/repos/disconnect — disconnect a repo
 router.delete('/disconnect', authMiddleware, async (req, res) => {
-  const { repoFullName } = req.body;
+  const { repoFullName, provider: providerName = 'github' } = req.body;
   try {
-    await Repo.findOneAndDelete({ repoFullName });
+    await Repo.findOneAndDelete({ provider: providerName, repoFullName });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
