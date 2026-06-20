@@ -51,4 +51,14 @@ async function installWebhook(repoFullName, token, webhookURL, secret) {
   return response.data.id;
 }
 
-module.exports = { fetchFileContent, listUserRepos, installWebhook };
+async function refreshAccessToken(refreshToken) {
+  const response = await axios.post('https://gitlab.com/oauth/token', {
+    client_id: process.env.GITLAB_CLIENT_ID,
+    client_secret: process.env.GITLAB_CLIENT_SECRET,
+    refresh_token: refreshToken,
+    grant_type: 'refresh_token'
+  });
+  return response.data; // { access_token, refresh_token, expires_in, ... }
+}
+
+module.exports = { fetchFileContent, listUserRepos, installWebhook, refreshAccessToken };

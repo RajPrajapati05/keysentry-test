@@ -55,10 +55,28 @@ router.get('/github', authMiddleware, async (req, res) => {
 router.get('/gitlab', authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
-    const token = user?.connections?.gitlab?.accessToken;
-    if (!token) return res.json([]);
+    const conn = user?.connections?.gitlab;
+    if (!conn?.accessToken) return res.json([]);
 
     const provider = getProvider('gitlab');
+    let token = conn.accessToken;
+
+    // Refresh if expired or about to expire (60s buffer)
+    const isExpired = !conn.expiresAt || new Date(conn.expiresAt).getTime() < Date.now() + 60000;
+    if (isExpired) {
+      if (!conn.refreshToken) {
+        return res.status(400).json({ error: 'GitLab session expired. Please reconnect.' });
+      }
+      const refreshed = await provider.refreshAccessToken(conn.refreshToken);
+      token = refreshed.access_token;
+
+      await User.findByIdAndUpdate(req.user.id, {
+        'connections.gitlab.accessToken': refreshed.access_token,
+        'connections.gitlab.refreshToken': refreshed.refresh_token,
+        'connections.gitlab.expiresAt': new Date(Date.now() + refreshed.expires_in * 1000)
+      });
+    }
+
     const repos = await provider.listUserRepos(token);
 
     const connectedRepos = await Repo.find({ provider: 'gitlab' });

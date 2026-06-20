@@ -1,9 +1,11 @@
 const mongoose = require('mongoose');
 
 const providerConnectionSchema = new mongoose.Schema({
-  providerId:  String,
-  accessToken: String,
-  connectedAt: { type: Date, default: Date.now }
+  providerId:   String,
+  accessToken:  String,
+  refreshToken: String,
+  expiresAt:    Date,
+  connectedAt:  { type: Date, default: Date.now }
 }, { _id: false });
 
 const userSchema = new mongoose.Schema({

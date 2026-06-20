@@ -38,7 +38,7 @@ router.get('/gitlab/callback', async (req, res) => {
       redirect_uri: redirectUri
     });
 
-    const { access_token } = tokenRes.data;
+    const { access_token, refresh_token, expires_in } = tokenRes.data;
 
     const gitlabUser = await axios.get('https://gitlab.com/api/v4/user', {
       headers: { Authorization: `Bearer ${access_token}` }
@@ -48,6 +48,8 @@ router.get('/gitlab/callback', async (req, res) => {
       'connections.gitlab': {
         providerId: String(gitlabUser.data.id),
         accessToken: access_token,
+        refreshToken: refresh_token,
+        expiresAt: new Date(Date.now() + expires_in * 1000),
         connectedAt: new Date()
       }
     });
