@@ -7,6 +7,9 @@ const API = axios.create({
 });
 
 export const getConnectedRepos = () => API.get('/api/repos');
-export const getGithubRepos = () => API.get('/api/repos/github');
-export const connectRepo = (repoFullName) => API.post('/api/repos/connect', { repoFullName });
-export const disconnectRepo = (repoFullName) => API.delete('/api/repos/disconnect', { data: { repoFullName } });
+export const getProviderRepos = (provider) => API.get(`/api/repos/${provider}`);
+export const connectRepo = (repoFullName, provider) =>
+  API.post('/api/repos/connect', { repoFullName, provider });
+export const disconnectRepo = (repoFullName, provider) =>
+  API.delete('/api/repos/disconnect', { data: { repoFullName, provider } });
+export const getConnectionStatus = () => API.get('/connections/status');
