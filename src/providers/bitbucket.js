@@ -20,24 +20,32 @@ async function fetchFileContent(repoFullName, sha, filePath, token) {
 async function listUserRepos(token) {
   const headers = { Authorization: `Bearer ${token}` };
 
-  // Step 1: get the user's workspaces (cross-workspace repo listing is deprecated — CHANGE-2770)
-  const wsRes = await axios.get('https://api.bitbucket.org/2.0/workspaces', {
-    headers,
-    params: { pagelen: 100 }
-  });
-  const workspaces = wsRes.data.values || [];
+  // Step 1: get the user's workspaces via the new permissions-based endpoint
+  // (GET /2.0/workspaces and GET /2.0/repositories were both removed under CHANGE-2770)
+  const slugs = [];
+  let wsUrl = 'https://api.bitbucket.org/2.0/user/permissions/workspaces';
+  let wsParams = { pagelen: 100 };
+
+  while (wsUrl) {
+    const res = await axios.get(wsUrl, { headers, params: wsParams });
+    for (const v of res.data.values || []) {
+      if (v.workspace?.slug) slugs.push(v.workspace.slug);
+    }
+    wsUrl = res.data.next || null;
+    wsParams = undefined;
+  }
 
   // Step 2: list repos per workspace, following pagination
   const allRepos = [];
-  for (const ws of workspaces) {
-    let url = `https://api.bitbucket.org/2.0/repositories/${ws.slug}`;
+  for (const slug of slugs) {
+    let url = `https://api.bitbucket.org/2.0/repositories/${slug}`;
     let params = { role: 'member', pagelen: 100 };
 
     while (url) {
       const res = await axios.get(url, { headers, params });
       allRepos.push(...res.data.values);
       url = res.data.next || null;
-      params = undefined; // pagination "next" URL already includes query params
+      params = undefined;
     }
   }
 
