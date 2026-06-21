@@ -158,7 +158,7 @@ router.post('/connect', authMiddleware, async (req, res) => {
     const existing = await Repo.findOne({ provider: providerName, repoFullName });
     if (existing) return res.status(400).json({ error: 'Repo already connected' });
 
-    const newRepo = await Repo.create({ provider: providerName, repoFullName, webhookId });
+    const newRepo = await Repo.create({ provider: providerName, repoFullName, webhookId, connectedBy: req.user.id });
     console.log(`[Repos] Connected: ${repoFullName} (${providerName})`);
     res.json({ success: true, repo: newRepo });
 

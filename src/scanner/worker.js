@@ -7,6 +7,7 @@ const { scanQueue } = require('../queue');
 const { scanContent } = require('./detector');
 const { sendAlerts } = require('../alerts/alerter');
 const { getProvider } = require('../providers');
+const { getValidToken } = require('../utils/tokenResolver');
 
 const SKIP_EXTENSIONS = [
   '.png', '.jpg', '.jpeg', '.gif', '.svg',
@@ -20,13 +21,6 @@ function shouldSkip(filePath) {
   if (lower.includes('.git/')) return true;
   if (lower.includes('dist/')) return true;
   return SKIP_EXTENSIONS.some(ext => lower.endsWith(ext));
-}
-
-// Resolve the right token for the given provider
-function getTokenForProvider(providerName) {
-  if (providerName === 'gitlab') return process.env.GITLAB_TOKEN;
-  if (providerName === 'bitbucket') return process.env.BITBUCKET_TOKEN;
-  return process.env.GITHUB_TOKEN; // default
 }
 
 async function isSuppressed(repoFullName, filePath, ruleId, value) {
@@ -49,7 +43,16 @@ scanQueue.process('scan-commits', 3, async (job) => {
   const allFindings = [];
 
   const provider = getProvider(providerName);
-  const token = getTokenForProvider(providerName);
+
+  const repoDoc = await Repo.findOne({ provider: providerName, repoFullName: repo.fullName });
+  const token = repoDoc?.connectedBy
+    ? await getValidToken(repoDoc.connectedBy, providerName)
+    : null;
+
+  if (!token) {
+    console.error(`[Worker] No valid token found for ${repo.fullName} (${providerName}) — skipping scan`);
+    return { secretsFound: 0, skipped: true };
+  }
 
   console.log(`[Worker] Scanning ${repo.fullName} on ${providerName} — ${commits.length} commit(s)`);
 
