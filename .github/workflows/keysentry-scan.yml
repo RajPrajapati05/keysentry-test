@@ -1,0 +1,26 @@
+name: KeySentry Secret Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # needed so git diff against base branch works
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run KeySentry secret scan
+        env:
+          KEYSENTRY_BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: node src/scripts/ci-scan.js
