@@ -18,11 +18,30 @@ async function fetchFileContent(repoFullName, sha, filePath, token) {
 }
 
 async function listUserRepos(token) {
-  const response = await axios.get('https://api.bitbucket.org/2.0/repositories', {
-    headers: { Authorization: `Bearer ${token}` },
-    params: { role: 'owner', pagelen: 100 }
+  const headers = { Authorization: `Bearer ${token}` };
+
+  // Step 1: get the user's workspaces (cross-workspace repo listing is deprecated — CHANGE-2770)
+  const wsRes = await axios.get('https://api.bitbucket.org/2.0/workspaces', {
+    headers,
+    params: { pagelen: 100 }
   });
-  return response.data.values.map(r => ({
+  const workspaces = wsRes.data.values || [];
+
+  // Step 2: list repos per workspace, following pagination
+  const allRepos = [];
+  for (const ws of workspaces) {
+    let url = `https://api.bitbucket.org/2.0/repositories/${ws.slug}`;
+    let params = { role: 'member', pagelen: 100 };
+
+    while (url) {
+      const res = await axios.get(url, { headers, params });
+      allRepos.push(...res.data.values);
+      url = res.data.next || null;
+      params = undefined; // pagination "next" URL already includes query params
+    }
+  }
+
+  return allRepos.map(r => ({
     id: r.uuid,
     fullName: r.full_name,
     description: r.description,

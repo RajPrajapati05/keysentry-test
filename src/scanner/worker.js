@@ -45,9 +45,14 @@ scanQueue.process('scan-commits', 3, async (job) => {
   const provider = getProvider(providerName);
 
   const repoDoc = await Repo.findOne({ provider: providerName, repoFullName: repo.fullName });
-  const token = repoDoc?.connectedBy
+  let token = repoDoc?.connectedBy
     ? await getValidToken(repoDoc.connectedBy, providerName)
     : null;
+
+  // Fallback for repos connected before connectedBy was tracked (legacy GitHub repos)
+  if (!token && providerName === 'github') {
+    token = process.env.GITHUB_TOKEN || null;
+  }
 
   if (!token) {
     console.error(`[Worker] No valid token found for ${repo.fullName} (${providerName}) — skipping scan`);
