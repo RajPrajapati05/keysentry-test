@@ -75,9 +75,10 @@ router.get('/bitbucket/callback', async (req, res) => {
     : 'http://localhost:3000';
 
   try {
+    const redirectUri = `${process.env.APP_URL}/connections/bitbucket/callback`;
     const tokenRes = await axios.post(
       'https://bitbucket.org/site/oauth2/access_token',
-      new URLSearchParams({ grant_type: 'authorization_code', code }),
+      new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirectUri }),
       {
         auth: {
           username: process.env.BITBUCKET_CLIENT_ID,
@@ -87,7 +88,7 @@ router.get('/bitbucket/callback', async (req, res) => {
       }
     );
 
-    const { access_token } = tokenRes.data;
+    const { access_token, refresh_token, expires_in } = tokenRes.data;
 
     const bbUser = await axios.get('https://api.bitbucket.org/2.0/user', {
       headers: { Authorization: `Bearer ${access_token}` }
@@ -97,6 +98,8 @@ router.get('/bitbucket/callback', async (req, res) => {
       'connections.bitbucket': {
         providerId: bbUser.data.uuid,
         accessToken: access_token,
+        refreshToken: refresh_token,
+        expiresAt: new Date(Date.now() + expires_in * 1000),
         connectedAt: new Date()
       }
     });
