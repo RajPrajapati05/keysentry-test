@@ -27,7 +27,7 @@ async function listUserRepos(token) {
 
   const allRepos = [];
   let url = `https://api.bitbucket.org/2.0/repositories/${workspace}`;
-  let params = { role: 'member', pagelen: 100 };
+  let params = { pagelen: 100 };
 
   while (url) {
     const res = await axios.get(url, { headers, params });
