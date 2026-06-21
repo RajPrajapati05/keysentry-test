@@ -4,7 +4,8 @@
   "description": "API Key Leak Scanner",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "ci-scan": "node src/scripts/ci-scan.js"
   },
   "dependencies": {
     "axios": "^1.6.0",
