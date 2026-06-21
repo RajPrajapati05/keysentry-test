@@ -62,4 +62,36 @@ async function installWebhook(repoFullName, token, webhookURL, secret) {
   return response.data.uuid;
 }
 
-module.exports = { fetchFileContent, listUserRepos, installWebhook };
+async function getChangedFiles(repoFullName, commitHash, token) {
+  try {
+    const added = [];
+    const modified = [];
+
+    let nextUrl = `https://api.bitbucket.org/2.0/repositories/${repoFullName}/diffstat/${commitHash}`;
+    let params = { pagelen: 100 };
+
+    while (nextUrl) {
+      const res = await axios.get(nextUrl, {
+        headers: { Authorization: `Bearer ${token}` },
+        params
+      });
+
+      for (const entry of res.data.values || []) {
+        const path = entry.new?.path || entry.old?.path;
+        if (!path) continue;
+        if (entry.status === 'added') added.push(path);
+        else modified.push(path); // covers modified, renamed, etc.
+      }
+
+      nextUrl = res.data.next || null;
+      params = undefined;
+    }
+
+    return { added, modified };
+  } catch (err) {
+    console.warn(`[Bitbucket] Could not fetch diffstat for ${commitHash}:`, err.message);
+    return { added: [], modified: [] };
+  }
+}
+
+module.exports = { fetchFileContent, listUserRepos, installWebhook, getChangedFiles };

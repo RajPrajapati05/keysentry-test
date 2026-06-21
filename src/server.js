@@ -8,6 +8,9 @@ const crypto = require('crypto');
 const passport = require('./auth/passport');
 const { validateWebhookSignature } = require('./utils/signature');
 const { scanQueue } = require('./queue');
+const Repo = require('./db/models/Repo');
+const { getValidToken } = require('./utils/tokenResolver');
+const bitbucketProvider = require('./providers/bitbucket');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -197,20 +200,39 @@ app.post('/webhook/bitbucket', async (req, res) => {
 
   console.log(`[Bitbucket] Push from ${actor.display_name} on ${repository.full_name}`);
 
+  // Resolve a token so we can fetch real diffstat (changed files) for each commit
+  const repoDoc = await Repo.findOne({ provider: 'bitbucket', repoFullName: repository.full_name });
+  const token = repoDoc?.connectedBy
+    ? await getValidToken(repoDoc.connectedBy, 'bitbucket')
+    : null;
+
+  const commits = await Promise.all(change.commits.map(async (c) => {
+    let added = [];
+    let modified = [];
+
+    if (token) {
+      const diff = await bitbucketProvider.getChangedFiles(repository.full_name, c.hash, token);
+      added = diff.added;
+      modified = diff.modified;
+    }
+
+    return {
+      sha: c.hash,
+      message: c.message,
+      author: c.author?.raw || actor.display_name,
+      added,
+      modified,
+      url: c.links?.html?.href,
+    };
+  }));
+
   const job = await scanQueue.add('scan-commits', {
     provider: 'bitbucket',
     repo: {
       fullName: repository.full_name,
       url: repository.links?.html?.href,
     },
-    commits: change.commits.map(c => ({
-      sha: c.hash,
-      message: c.message,
-      author: c.author?.raw || actor.display_name,
-      added: [],
-      modified: [],
-      url: c.links?.html?.href,
-    })),
+    commits,
     branch: change.new?.name,
     pusher: actor.display_name,
   });
