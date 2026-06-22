@@ -60,11 +60,15 @@ const authRouter = require('./routes/auth');
 const reposRouter = require('./routes/repos');
 const connectionsRouter = require('./routes/connections');
 const teamRouter = require('./routes/team');
+const apiKeysRouter = require('./routes/apiKeys');
+const v1Router = require('./routes/v1');
 app.use('/api/scans', scansRouter);
 app.use('/auth', authRouter);
 app.use('/api/repos', reposRouter);
 app.use('/connections', connectionsRouter);
 app.use('/api/team', teamRouter);
+app.use('/api/keys', apiKeysRouter);
+app.use('/v1', v1Router);
 
 // Health check
 app.get('/', (req, res) => {
