@@ -9,7 +9,8 @@ const apiKeyAuth = require('../middleware/apiKeyAuth');
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 60,
-  keyGenerator: (req) => req.apiKey?._id?.toString() || req.ip,
+  keyGenerator: (req) => req.apiKey?._id?.toString() || req.ip || 'unknown',
+  validate: { xForwardedForHeader: false },
   message: { error: 'Rate limit exceeded. Max 60 requests per minute.' }
 });
 
@@ -107,9 +108,6 @@ router.get('/repos', async (req, res) => {
 router.get('/findings', async (req, res) => {
   try {
     const { severity, repo, limit = 50 } = req.query;
-    const filter = { 'findings.suppressed': { $ne: true } };
-    if (repo) filter.repoFullName = repo;
-    if (severity) filter['findings.severity'] = severity;
 
     const scans = await Scan.find({ status: 'flagged', ...repo ? { repoFullName: repo } : {} })
       .sort({ scannedAt: -1 })
