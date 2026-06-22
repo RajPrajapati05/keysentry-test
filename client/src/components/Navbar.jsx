@@ -1,4 +1,4 @@
-import { ShieldCheck, GitBranch, LayoutDashboard, Users } from 'lucide-react';
+import { ShieldCheck, GitBranch, LayoutDashboard, Users, Key } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 
@@ -36,6 +36,7 @@ export default function Navbar({ user }) {
         {navLink('/', 'Dashboard', LayoutDashboard)}
         {navLink('/repos', 'Repositories', GitBranch)}
         {navLink('/team', 'Team', Users)}
+        {navLink('/api-keys', 'API Keys', Key)}
       </div>
 
       {user && (
