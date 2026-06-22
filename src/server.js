@@ -59,10 +59,12 @@ const scansRouter = require('./routes/scans');
 const authRouter = require('./routes/auth');
 const reposRouter = require('./routes/repos');
 const connectionsRouter = require('./routes/connections');
+const teamRouter = require('./routes/team');
 app.use('/api/scans', scansRouter);
 app.use('/auth', authRouter);
 app.use('/api/repos', reposRouter);
 app.use('/connections', connectionsRouter);
+app.use('/api/team', teamRouter);
 
 // Health check
 app.get('/', (req, res) => {
@@ -200,7 +202,6 @@ app.post('/webhook/bitbucket', async (req, res) => {
 
   console.log(`[Bitbucket] Push from ${actor.display_name} on ${repository.full_name}`);
 
-  // Resolve a token so we can fetch real diffstat (changed files) for each commit
   const repoDoc = await Repo.findOne({ provider: 'bitbucket', repoFullName: repository.full_name });
   const token = repoDoc?.connectedBy
     ? await getValidToken(repoDoc.connectedBy, 'bitbucket')

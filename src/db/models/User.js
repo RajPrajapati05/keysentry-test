@@ -9,11 +9,13 @@ const providerConnectionSchema = new mongoose.Schema({
 }, { _id: false });
 
 const userSchema = new mongoose.Schema({
-  githubId:   { type: String, required: true, unique: true }, // primary login identity stays GitHub
+  githubId:   { type: String, required: true, unique: true },
   username:   { type: String, required: true },
   email:      String,
   avatarUrl:  String,
-  accessToken: String, // kept for backward compatibility — this is the GitHub token
+  accessToken: String,
+  teamId:     { type: mongoose.Schema.Types.ObjectId, ref: 'Team', default: null },
+  role:       { type: String, enum: ['admin', 'member', 'viewer'], default: 'admin' },
   connections: {
     github:    providerConnectionSchema,
     gitlab:    providerConnectionSchema,

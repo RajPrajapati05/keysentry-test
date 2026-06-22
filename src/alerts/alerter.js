@@ -2,22 +2,24 @@ require('dotenv').config();
 const nodemailer = require('nodemailer');
 const { sendSlackAlert } = require('./slack');
 
-async function sendEmailAlert(findings) {
-  const { EMAIL_HOST, EMAIL_USER, EMAIL_PASS, ALERT_EMAIL_TO } = process.env;
+function createTransporter() {
+  const { EMAIL_HOST, EMAIL_USER, EMAIL_PASS } = process.env;
+  if (!EMAIL_HOST) return null;
+  return nodemailer.createTransport({
+    host: EMAIL_HOST,
+    port: 587,
+    auth: { user: EMAIL_USER, pass: EMAIL_PASS }
+  });
+}
 
-  if (!EMAIL_HOST || !ALERT_EMAIL_TO) {
+async function sendEmailAlert(findings) {
+  const { EMAIL_USER, ALERT_EMAIL_TO } = process.env;
+  const transporter = createTransporter();
+
+  if (!transporter || !ALERT_EMAIL_TO) {
     console.warn('[Alerts] Email not configured — skipping');
     return;
   }
-
-  const transporter = nodemailer.createTransport({
-    host: EMAIL_HOST,
-    port: 587,
-    auth: {
-      user: EMAIL_USER,
-      pass: EMAIL_PASS,
-    },
-  });
 
   const top = findings[0];
 
@@ -49,9 +51,7 @@ async function sendEmailAlert(findings) {
         </thead>
         <tbody>${rows}</tbody>
       </table>
-      <p style="margin-top:20px;color:#666">
-        Sent by KeySentry — API Key Leak Scanner
-      </p>
+      <p style="margin-top:20px;color:#666">Sent by KeySentry — API Key Leak Scanner</p>
     </div>
   `;
 
@@ -65,6 +65,45 @@ async function sendEmailAlert(findings) {
   console.log('[Alerts] Email sent to', ALERT_EMAIL_TO);
 }
 
+async function sendTeamInviteEmail(toEmail, teamName, inviteUrl, invitedBy) {
+  const { EMAIL_USER } = process.env;
+  const transporter = createTransporter();
+
+  if (!transporter) {
+    console.warn('[Alerts] Email not configured — skipping invite email');
+    return;
+  }
+
+  const html = `
+    <div style="font-family:sans-serif;max-width:600px">
+      <h2 style="color:#3B82F6">🔐 You've been invited to join KeySentry</h2>
+      <p><b>${invitedBy}</b> has invited you to join the team <b>${teamName}</b> on KeySentry.</p>
+      <p>Click the button below to accept the invitation:</p>
+      <a href="${inviteUrl}" style="
+        display:inline-block;
+        padding:12px 24px;
+        background:#3B82F6;
+        color:white;
+        text-decoration:none;
+        border-radius:6px;
+        font-weight:bold;
+        margin:16px 0;
+      ">Accept Invitation</a>
+      <p style="color:#666;font-size:13px">This invite link expires in 7 days.</p>
+      <p style="margin-top:20px;color:#666">Sent by KeySentry — API Key Leak Scanner</p>
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from: `"KeySentry" <${EMAIL_USER}>`,
+    to: toEmail,
+    subject: `You've been invited to join ${teamName} on KeySentry`,
+    html,
+  });
+
+  console.log('[Alerts] Invite email sent to', toEmail);
+}
+
 async function sendAlerts(findings) {
   if (!findings || findings.length === 0) return;
 
@@ -72,13 +111,8 @@ async function sendAlerts(findings) {
 
   await Promise.allSettled([
     sendEmailAlert(findings),
-    sendSlackAlert(
-      findings,
-      top.repo,
-      top.commitSha,
-      top.pusher
-    ),
+    sendSlackAlert(findings, top.repo, top.commitSha, top.pusher),
   ]);
 }
 
-module.exports = { sendAlerts };
+module.exports = { sendAlerts, sendTeamInviteEmail };
