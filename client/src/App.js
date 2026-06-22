@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import ScanDetail from './pages/ScanDetail';
 import Login from './pages/Login';
 import Repos from './pages/Repos';
+import Team from './pages/Team';
 import axios from 'axios';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
@@ -37,6 +38,8 @@ function App() {
         <Route path="/" element={<ProtectedLayout><Dashboard /></ProtectedLayout>} />
         <Route path="/repos" element={<ProtectedLayout><Repos /></ProtectedLayout>} />
         <Route path="/scans/:id" element={<ProtectedLayout><ScanDetail /></ProtectedLayout>} />
+        <Route path="/team" element={<ProtectedLayout><Team /></ProtectedLayout>} />
+        <Route path="/invite" element={<ProtectedLayout><Team /></ProtectedLayout>} />
       </Routes>
     </BrowserRouter>
   );
