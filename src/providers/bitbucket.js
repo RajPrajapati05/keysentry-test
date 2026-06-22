@@ -31,7 +31,6 @@ async function listUserRepos(token) {
 
   while (url) {
     const res = await axios.get(url, { headers, params });
-    console.log(`[Bitbucket DEBUG] workspace=${workspace} url=${url} returned ${res.data.values?.length || 0} repos, size=${res.data.size}`);
     allRepos.push(...res.data.values);
     url = res.data.next || null;
     params = undefined;
@@ -81,7 +80,7 @@ async function getChangedFiles(repoFullName, commitHash, token) {
         const path = entry.new?.path || entry.old?.path;
         if (!path) continue;
         if (entry.status === 'added') added.push(path);
-        else modified.push(path); // covers modified, renamed, etc.
+        else modified.push(path);
       }
 
       nextUrl = res.data.next || null;
