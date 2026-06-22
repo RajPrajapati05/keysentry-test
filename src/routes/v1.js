@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const Scan = require('../db/models/Scan');
 const Repo = require('../db/models/Repo');
 const apiKeyAuth = require('../middleware/apiKeyAuth');
@@ -9,8 +9,7 @@ const apiKeyAuth = require('../middleware/apiKeyAuth');
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 60,
-  keyGenerator: (req) => req.apiKey?._id?.toString() || req.ip || 'unknown',
-  validate: { xForwardedForHeader: false },
+  keyGenerator: (req) => req.apiKey?._id?.toString() || ipKeyGenerator(req),
   message: { error: 'Rate limit exceeded. Max 60 requests per minute.' }
 });
 
